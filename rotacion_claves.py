@@ -11,6 +11,7 @@ import time
 import random
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+import signal
 
 @dataclass
 class APIKeyInfo:
@@ -107,18 +108,59 @@ class GeminiAPIRotator:
         model = genai.GenerativeModel(model_name)
         return model.generate_content(prompt, generation_config=generation_config)
     
+    def _timeout_handler(self, signum, frame):
+        """Manejador de timeout para signal"""
+        raise TimeoutError("Timeout alcanzado")
+    
+    def _try_generate_with_signal_timeout(self, model_name: str, prompt: str, generation_config: dict, timeout_seconds: int = 10):
+        """Intenta generar contenido con timeout usando signal (más agresivo)"""
+        try:
+            # Configurar signal timeout (solo funciona en sistemas Unix)
+            signal.signal(signal.SIGALRM, self._timeout_handler)
+            signal.alarm(timeout_seconds)
+            
+            # Generar contenido
+            response = self._generate_content_single_attempt(model_name, prompt, generation_config)
+            
+            # Cancelar alarm si terminó antes
+            signal.alarm(0)
+            return response, False  # respuesta, timeout_occurred
+            
+        except TimeoutError:
+            signal.alarm(0)  # Cancelar alarm
+            self.logger.warning(f"Signal timeout de {timeout_seconds}s alcanzado")
+            return None, True  # respuesta, timeout_occurred
+    def _try_generate_with_hybrid_timeout(self, model_name: str, prompt: str, generation_config: dict, timeout_seconds: int = 10):
+        """Intenta timeout híbrido: signal para Unix, ThreadPoolExecutor como fallback"""
+        import platform
+        
+        # En sistemas Unix/Linux/macOS, intentar con signal primero
+        if platform.system() in ['Darwin', 'Linux']:
+            try:
+                return self._try_generate_with_signal_timeout(model_name, prompt, generation_config, timeout_seconds)
+            except Exception as e:
+                self.logger.warning(f"Signal timeout falló: {e}, usando ThreadPoolExecutor")
+        
+        # Fallback o sistemas Windows: usar ThreadPoolExecutor
+        return self._try_generate_with_timeout(model_name, prompt, generation_config, timeout_seconds)
+    
     def _try_generate_with_timeout(self, model_name: str, prompt: str, generation_config: dict, timeout_seconds: int = 10):
         """Intenta generar contenido con timeout usando ThreadPoolExecutor"""
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(self._generate_content_single_attempt, model_name, prompt, generation_config)
             try:
+                future = executor.submit(self._generate_content_single_attempt, model_name, prompt, generation_config)
                 # Esperar por la respuesta con timeout
                 response = future.result(timeout=timeout_seconds)
                 return response, False  # respuesta, timeout_occurred
             except TimeoutError:
                 # Cancelar la tarea pendiente
                 future.cancel()
+                self.logger.warning(f"Timeout de {timeout_seconds}s alcanzado, cancelando tarea")
                 return None, True  # respuesta, timeout_occurred
+            except Exception as e:
+                # Para otros errores durante la ejecución
+                future.cancel()
+                raise e
     
     def rotate_key(self) -> bool:
         """Rota a la siguiente clave disponible"""
@@ -155,24 +197,28 @@ class GeminiAPIRotator:
         
         for attempt in range(max_retries + 1):
             current_key = self.api_keys[self.current_key_index]
+            self.logger.info(f"Intento {attempt + 1}/{max_retries + 1} con clave {current_key.name}")
             
             try:
-                # Intentar generar contenido con timeout
-                response, timeout_occurred = self._try_generate_with_timeout(
+                # Intentar generar contenido con timeout híbrido
+                response, timeout_occurred = self._try_generate_with_hybrid_timeout(
                     model_name, prompt, generation_config, timeout_seconds
                 )
                 
                 if timeout_occurred:
                     # Timeout: rotar clave silenciosamente sin bloquear
-                    self.logger.info(f"Timeout de {timeout_seconds}s con clave {current_key.name}. Rotando...")
+                    self.logger.warning(f"Timeout de {timeout_seconds}s con clave {current_key.name}. Rotando...")
                     
                     if attempt < max_retries:
                         if self._rotate_key_silently():
+                            time.sleep(0.5)  # Pequeña pausa antes del siguiente intento
                             continue  # Probar con la siguiente clave
                         else:
+                            self.logger.error("No hay más claves disponibles después del timeout")
                             break  # No hay más claves disponibles
                     else:
                         # Último intento falló por timeout
+                        self.logger.error("Último intento también falló por timeout")
                         break
                 
                 else:

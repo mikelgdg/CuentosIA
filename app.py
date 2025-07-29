@@ -270,9 +270,9 @@ if prompt := st.chat_input("Haz tu pregunta..."):
                     prompt=gemini_prompt,
                     generation_config=generation_config,
                     max_retries=2,
-                    timeout_seconds=30
+                    timeout_seconds=10
                 )
-            
+
             full_response = response.text
             message_placeholder.markdown(full_response)
             
