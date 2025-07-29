@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from typing import List, Optional
 import time
 import random
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 @dataclass
 class APIKeyInfo:
@@ -67,14 +69,48 @@ class GeminiAPIRotator:
         best_key_index = min(available_keys, key=lambda i: self.api_keys[i].last_used)
         return best_key_index
     
-    def _block_current_key(self, duration_minutes: int = 60):
+    def _block_current_key(self, duration_minutes: int = 60, reason: str = "error 429"):
         """Bloquea la clave actual por un tiempo determinado"""
         current_key = self.api_keys[self.current_key_index]
         current_key.is_blocked = True
         current_key.block_until = time.time() + (duration_minutes * 60)
         current_key.failed_count += 1
         
-        self.logger.warning(f"Clave {current_key.name} bloqueada por {duration_minutes} minutos debido a error 429")
+        self.logger.warning(f"Clave {current_key.name} bloqueada por {duration_minutes} minutos debido a {reason}")
+    
+    def _rotate_key_silently(self) -> bool:
+        """Rota a la siguiente clave disponible sin bloquear la actual (para timeouts)"""
+        next_key_index = self._get_next_available_key()
+        
+        if next_key_index is None:
+            self.logger.error("No hay claves API disponibles. Todas están bloqueadas.")
+            return False
+        
+        # Solo cambiar clave sin bloquear la actual (útil para timeouts)
+        if next_key_index != self.current_key_index:
+            self.current_key_index = next_key_index
+            self._configure_current_key()
+            return True
+        
+        return False
+    
+    def _generate_content_single_attempt(self, model_name: str, prompt: str, generation_config: dict):
+        """Intenta generar contenido una sola vez"""
+        model = genai.GenerativeModel(model_name)
+        return model.generate_content(prompt, generation_config=generation_config)
+    
+    def _try_generate_with_timeout(self, model_name: str, prompt: str, generation_config: dict, timeout_seconds: int = 30):
+        """Intenta generar contenido con timeout usando ThreadPoolExecutor"""
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(self._generate_content_single_attempt, model_name, prompt, generation_config)
+            try:
+                # Esperar por la respuesta con timeout
+                response = future.result(timeout=timeout_seconds)
+                return response, False  # respuesta, timeout_occurred
+            except TimeoutError:
+                # Cancelar la tarea pendiente
+                future.cancel()
+                return None, True  # respuesta, timeout_occurred
     
     def rotate_key(self) -> bool:
         """Rota a la siguiente clave disponible"""
@@ -94,43 +130,59 @@ class GeminiAPIRotator:
         
         return True
     
-    def generate_content_with_retry(self, model_name: str, prompt: str, generation_config: dict, max_retries: int = 3):
+    def generate_content_with_retry(self, model_name: str, prompt: str, generation_config: dict, max_retries: int = 3, timeout_seconds: int = 30):
         """
-        Genera contenido con reintentos automáticos y rotación de claves
+        Genera contenido con reintentos automáticos, rotación de claves y timeout
         
         Args:
             model_name: Nombre del modelo (ej: 'gemini-2.0-flash')
             prompt: El prompt para generar
             generation_config: Configuración de generación
             max_retries: Número máximo de reintentos
+            timeout_seconds: Timeout en segundos para cada intento
         
         Returns:
             Respuesta del modelo o lanza excepción si fallan todos los intentos
         """
         
         for attempt in range(max_retries + 1):
+            current_key = self.api_keys[self.current_key_index]
+            
             try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(prompt, generation_config=generation_config)
+                # Intentar generar contenido con timeout
+                response, timeout_occurred = self._try_generate_with_timeout(
+                    model_name, prompt, generation_config, timeout_seconds
+                )
                 
-                # Si llegamos hasta aquí, la generación fue exitosa
-                current_key = self.api_keys[self.current_key_index]
-                self.logger.info(f"Contenido generado exitosamente con clave: {current_key.name}")
-                return response
+                if timeout_occurred:
+                    # Timeout: rotar clave silenciosamente sin bloquear
+                    self.logger.info(f"Timeout de {timeout_seconds}s con clave {current_key.name}. Rotando...")
+                    
+                    if attempt < max_retries:
+                        if self._rotate_key_silently():
+                            continue  # Probar con la siguiente clave
+                        else:
+                            break  # No hay más claves disponibles
+                    else:
+                        # Último intento falló por timeout
+                        break
+                
+                else:
+                    # Generación exitosa
+                    self.logger.info(f"Contenido generado exitosamente con clave: {current_key.name}")
+                    return response
                 
             except Exception as e:
                 error_str = str(e).lower()
-                current_key = self.api_keys[self.current_key_index]
                 
                 # Verificar si es un error 429 (rate limit)
                 if "429" in error_str or "quota" in error_str or "rate limit" in error_str:
                     self.logger.warning(f"Error 429 con clave {current_key.name}. Intento {attempt + 1}/{max_retries + 1}")
                     
                     if attempt < max_retries:
-                        # Intentar rotar clave
+                        # Intentar rotar clave (bloqueando la actual)
                         if self.rotate_key():
-                            # Pequeña pausa antes del siguiente intento
-                            time.sleep(random.uniform(1, 3))
+                            time.sleep(random.uniform(1, 3))  # Pausa antes del siguiente intento
                             continue
                         else:
                             self.logger.error("No se pudo rotar a otra clave API")
@@ -145,7 +197,7 @@ class GeminiAPIRotator:
                     raise e
         
         # Si llegamos aquí, significa que agotamos todos los reintentos
-        raise Exception("Se agotaron todos los reintentos y claves API disponibles")
+        raise RuntimeError("Se agotaron todos los reintentos y claves API disponibles")
     
     def get_current_key_info(self) -> APIKeyInfo:
         """Retorna información sobre la clave actual"""

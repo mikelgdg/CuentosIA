@@ -165,12 +165,12 @@ nombres_libros = list(libros_disponibles.keys())
 # Sidebar mejorada
 with st.sidebar:
 
-    col1, col2, col3 = st.sidebar.columns([1, 0.6, 1])
+    col1, col2, col3 = st.sidebar.columns([1, 1, 1])
     with col2:
     # Logo centrado con alta calidad
         st.image(".streamlit/logo2.png", use_container_width=False)
 
-    col1, col2, col3 = st.sidebar.columns([1, 2, 1])
+    col1, col2, col3 = st.sidebar.columns([1, 3, 1])
     with col2:
     # Logo centrado con alta calidad
         st.image(".streamlit/UWU.png", use_container_width=False)
@@ -264,12 +264,13 @@ if prompt := st.chat_input("Haz tu pregunta..."):
             }
             
             with st.spinner("🌟 Creando tu historia..."):
-                # Usar el rotador de claves para generar contenido con reintentos automáticos
+                # Usar el rotador de claves para generar contenido con reintentos automáticos y timeout
                 response = api_rotator.generate_content_with_retry(
                     model_name='gemini-2.0-flash',
                     prompt=gemini_prompt,
                     generation_config=generation_config,
-                    max_retries=2
+                    max_retries=2,
+                    timeout_seconds=30
                 )
             
             full_response = response.text
@@ -283,6 +284,9 @@ if prompt := st.chat_input("Haz tu pregunta..."):
             
             if "429" in error_str or "quota" in error_str or "rate limit" in error_str:
                 error_message = "⏳ **Límite de velocidad alcanzado**\n\nSe están rotando las claves API automáticamente. Por favor, intenta de nuevo en unos momentos."
+                st.warning(error_message)
+            elif "timeout" in error_str or "se agotaron todos los reintentos" in error_str:
+                error_message = "⏰ **Tiempo de espera agotado**\n\nEl sistema probó múltiples claves pero todas tardaron demasiado. Por favor, intenta de nuevo."
                 st.warning(error_message)
             elif "api key" in error_str:
                 error_message = "🔑 **Error de clave API**\n\nTodas las claves API están temporalmente bloqueadas. Por favor, intenta más tarde."
