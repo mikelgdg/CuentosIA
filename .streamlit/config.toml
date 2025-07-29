@@ -1,0 +1,17 @@
+[theme]
+# Tema claro con colores dorado, blanco y gris
+primaryColor = "#d9b568"           # Color dorado principal
+backgroundColor = "#ffffff"        # Fondo blanco
+secondaryBackgroundColor = "#f5f5f5"  # Fondo secundario gris claro
+textColor = "#000000"              # Texto negro/gris oscuro
+
+[server]
+headless = true
+port = 8501
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+serverAddress = "localhost"
+serverPort = 8501
+gatherUsageStats = false
