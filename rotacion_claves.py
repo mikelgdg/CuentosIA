@@ -107,7 +107,7 @@ class GeminiAPIRotator:
         model = genai.GenerativeModel(model_name)
         return model.generate_content(prompt, generation_config=generation_config)
     
-    def _try_generate_with_timeout(self, model_name: str, prompt: str, generation_config: dict, timeout_seconds: int = 30):
+    def _try_generate_with_timeout(self, model_name: str, prompt: str, generation_config: dict, timeout_seconds: int = 10):
         """Intenta generar contenido con timeout usando ThreadPoolExecutor"""
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(self._generate_content_single_attempt, model_name, prompt, generation_config)
@@ -138,7 +138,7 @@ class GeminiAPIRotator:
         
         return True
     
-    def generate_content_with_retry(self, model_name: str, prompt: str, generation_config: dict, max_retries: int = 3, timeout_seconds: int = 30):
+    def generate_content_with_retry(self, model_name: str, prompt: str, generation_config: dict, max_retries: int = 3, timeout_seconds: int = 10):
         """
         Genera contenido con reintentos automáticos, rotación de claves y timeout
         
