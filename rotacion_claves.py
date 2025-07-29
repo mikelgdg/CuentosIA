@@ -29,16 +29,24 @@ class GeminiAPIRotator:
         """Inicializa el rotador con las claves disponibles"""
         self.api_keys = [
             APIKeyInfo("AIzaSyBVhWdlUeqXlxvf9Nldq-OId9Awoy4n1X4", "mikel_main"),
+            APIKeyInfo("AIzaSyA82YwMMkjSIBnevSXkEvfgPtA9VXcaeE8", "mikel_1"),
+            APIKeyInfo("AIzaSyDMqjrIBrLeTF8I2Rqp2M4aqS46zrCE3sI", "mikel_otra"),
             APIKeyInfo("AIzaSyBkpLD0fw-zFodOhRGnkF4bzQBYOzFu8d0", "mikel_2"),
             APIKeyInfo("AIzaSyAj0ppjyHkzmln9GQyPq6vRPGrncD9g3tE", "mikel_3"),
             APIKeyInfo("AIzaSyCiOU_-G44UGRJp4QP9trrXsWBO0GlTXPQ", "mikel_4"),
             APIKeyInfo("AIzaSyBT3yn5B42JT28fqKkA-kgDgVOfgJ3IOmM", "frank_1"),
             APIKeyInfo("AIzaSyBul84D3oblaj09308kOa-Ptb1Rh9XKHJo", "frank_2"),
+            APIKeyInfo("AIzaSyALMtWMcZbBoUOoF3X1JFBN7visJrYH8cg", "frank_3"),
         ]
-        self.current_key_index = 0
+        # Empezar con una clave aleatoria para distribuir la carga
+        self.current_key_index = random.randint(0, len(self.api_keys) - 1)
         self.logger = logging.getLogger(__name__)
         
-        # Configurar la primera clave
+        # Log inicial con información sobre la clave aleatoria seleccionada
+        self.logger.info(f"Iniciando rotador de claves API con {len(self.api_keys)} claves disponibles")
+        self.logger.info(f"Clave inicial seleccionada aleatoriamente: {self.api_keys[self.current_key_index].name}")
+        
+        # Configurar la primera clave (que ahora es aleatoria)
         self._configure_current_key()
     
     def _configure_current_key(self):
@@ -46,7 +54,7 @@ class GeminiAPIRotator:
         current_key = self.api_keys[self.current_key_index]
         genai.configure(api_key=current_key.key)
         current_key.last_used = time.time()
-        self.logger.info(f"Configurada clave API: {current_key.name}")
+        self.logger.info(f"Configurada clave API: {current_key.name} (índice {self.current_key_index})")
     
     def _get_next_available_key(self) -> Optional[int]:
         """Encuentra la siguiente clave disponible"""
