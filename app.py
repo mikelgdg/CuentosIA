@@ -3,6 +3,7 @@ import google.generativeai as genai
 import json
 import os
 import random
+from rotacion_claves import get_api_rotator
 
 # Configuración de página mejorada
 st.set_page_config(
@@ -22,8 +23,8 @@ def load_css():
 
 load_css()
 
-# Configuración de la API de Gemini
-genai.configure(api_key="AIzaSyAWrzgpwHmgHJueYZiJ_dPWlLtvQR21wz0")
+# Obtener el rotador de claves API
+api_rotator = get_api_rotator()
 
 # --- Funciones de carga de base y procesamiento de texto (adaptadas de cuentos.py) ---
 def cargar_base(path="base_textos.json"):
@@ -194,6 +195,23 @@ with st.sidebar:
         💡 **Tip**: Las mejores historias surgen de preguntas profundas y reflexivas.
         """)
     
+    # Información del estado de las claves API
+    with st.expander("🔑 Estado de las Claves API", expanded=False):
+        status = api_rotator.get_status_summary()
+        st.markdown(f"**Clave actual:** {status['current_key']}")
+        st.markdown(f"**Claves disponibles:** {status['available_keys']}/{status['total_keys']}")
+        
+        if status['blocked_keys'] > 0:
+            st.warning(f"⚠️ {status['blocked_keys']} clave(s) bloqueada(s) temporalmente")
+            
+            # Mostrar detalles de claves bloqueadas
+            for key_status in status['keys_status']:
+                if key_status['is_blocked']:
+                    mins_left = key_status['minutes_until_unblock']
+                    st.text(f"🔒 {key_status['name']}: {mins_left} min restantes")
+        else:
+            st.success("✅ Todas las claves están disponibles")
+    
     st.markdown("### Ajustes")
 
     # Forzar visibilidad con título prominent
@@ -249,15 +267,18 @@ if prompt := st.chat_input("Haz tu pregunta..."):
             gemini_prompt = construir_prompt_anecdota(prompt, optimized_book_text, story_length)
             max_output_tokens = calcular_max_tokens_por_longitud(story_length)
             
-            model = genai.GenerativeModel('gemini-2.0-flash')
+            generation_config = {
+                'temperature': temperature,
+                'max_output_tokens': max_output_tokens,
+            }
             
-            with st.spinner(""):
-                response = model.generate_content(
-                    gemini_prompt,
-                    generation_config={
-                        'temperature': temperature,
-                        'max_output_tokens': max_output_tokens,
-                    }
+            with st.spinner("🌟 Creando tu historia..."):
+                # Usar el rotador de claves para generar contenido con reintentos automáticos
+                response = api_rotator.generate_content_with_retry(
+                    model_name='gemini-2.0-flash',
+                    prompt=gemini_prompt,
+                    generation_config=generation_config,
+                    max_retries=2
                 )
             
             full_response = response.text
@@ -267,8 +288,18 @@ if prompt := st.chat_input("Haz tu pregunta..."):
             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
         except Exception as e:
-            error_message = f"Lo siento, hubo un error al generar la historia: {str(e)}"
-            st.error(error_message)
+            error_str = str(e).lower()
+            
+            if "429" in error_str or "quota" in error_str or "rate limit" in error_str:
+                error_message = "⏳ **Límite de velocidad alcanzado**\n\nSe están rotando las claves API automáticamente. Por favor, intenta de nuevo en unos momentos."
+                st.warning(error_message)
+            elif "api key" in error_str:
+                error_message = "🔑 **Error de clave API**\n\nTodas las claves API están temporalmente bloqueadas. Por favor, intenta más tarde."
+                st.error(error_message)
+            else:
+                error_message = f"❌ **Error inesperado**\n\n{str(e)}"
+                st.error(error_message)
+            
             st.session_state.messages.append({"role": "assistant", "content": error_message})
 
 
