@@ -195,22 +195,7 @@ with st.sidebar:
         💡 **Tip**: Las mejores historias surgen de preguntas profundas y reflexivas.
         """)
     
-    # Información del estado de las claves API
-    with st.expander("🔑 Estado de las Claves API", expanded=False):
-        status = api_rotator.get_status_summary()
-        st.markdown(f"**Clave actual:** {status['current_key']}")
-        st.markdown(f"**Claves disponibles:** {status['available_keys']}/{status['total_keys']}")
-        
-        if status['blocked_keys'] > 0:
-            st.warning(f"⚠️ {status['blocked_keys']} clave(s) bloqueada(s) temporalmente")
-            
-            # Mostrar detalles de claves bloqueadas
-            for key_status in status['keys_status']:
-                if key_status['is_blocked']:
-                    mins_left = key_status['minutes_until_unblock']
-                    st.text(f"🔒 {key_status['name']}: {mins_left} min restantes")
-        else:
-            st.success("✅ Todas las claves están disponibles")
+    
     
     st.markdown("### Ajustes")
 
@@ -240,6 +225,12 @@ with st.sidebar:
         step=1,
         help="Controla la longitud de la historia. 1 = muy breve (5-7 frases), 10 = más extensa (15-17 frases)."
     )
+
+    # Información del estado de las claves API
+    with st.expander("Estado de claves API", expanded=False):
+        status = api_rotator.get_status_summary()
+        st.markdown(f"**Claves disponibles:** {status['available_keys']}/{status['total_keys']}")
+        
     
 
 
