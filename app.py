@@ -7,7 +7,7 @@ from rotacion_claves import get_api_rotator
 
 # Configuración de página mejorada
 st.set_page_config(
-    page_title="AurIA",
+    page_title="AIfil",
     page_icon=".streamlit/logo2.png",  # Usar tu logo como icono de la pestaña
     layout="centered",
     initial_sidebar_state="expanded"
@@ -136,7 +136,7 @@ with col2:
     st.image(".streamlit/logo2.png", use_container_width=False)
     
     # Título con clase CSS personalizada
-    #st.markdown('<h1 class="main-header">AurIA</h1>', unsafe_allow_html=True)
+    #st.markdown('<h1 class="main-header">AIfil</h1>', unsafe_allow_html=True)
     #st.markdown('<p class="subtitle">Powered by Gemini AI</p>', unsafe_allow_html=True)
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
@@ -178,14 +178,14 @@ with st.sidebar:
     st.sidebar.markdown('###')
 
     # Desplegables con información
-    with st.expander("¿Qué es AurIA?", expanded=False):
+    with st.expander("¿Qué es AIfil?", expanded=False):
         st.markdown("""
-        **AurIA** es una herramienta que utiliza la inteligencia artificial de Gemini para generar historias breves y evocadoras basadas en textos clásicos de sabiduría universal.
-        
-        Combina la profundidad de los grandes textos filosóficos con la capacidad narrativa de la IA moderna.
+        **AIfil** es una herramienta que utiliza la inteligencia artificial de Gemini para generar historias breves y evocadoras basadas en textos clásicos de sabiduría universal.
+
+        AIfil combina la profundidad de los grandes textos filosóficos con la capacidad narrativa de la IA moderna.
         """)
-    
-    with st.expander("¿Cómo usar AurIA?", expanded=False):
+
+    with st.expander("¿Cómo usar AIfil?", expanded=False):
         st.markdown("""
         1. **Selecciona una fuente**: Elige un libro que te inspire
         2. **Haz tu pregunta**: Escribe una pregunta existencial o filosófica
