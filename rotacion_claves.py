@@ -12,6 +12,7 @@ import random
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import signal
+import streamlit as st
 
 @dataclass
 class APIKeyInfo:
@@ -23,12 +24,38 @@ class APIKeyInfo:
     is_blocked: bool = False
     block_until: float = 0.0
 
-class GeminiAPIRotator:
-    """Gestor de rotación de claves API para Gemini"""
-    
-    def __init__(self):
-        """Inicializa el rotador con las claves disponibles"""
-        self.api_keys = [
+def load_api_keys_from_secrets():
+    """Carga las claves API desde st.secrets"""
+    try:
+        # Cargar las claves desde secrets.toml
+        api_keys_data = st.secrets["google"]["api_keys"]
+        api_keys = []
+        
+        for key_info in api_keys_data:
+            api_keys.append(APIKeyInfo(key_info["key"], key_info["name"]))
+        
+        if not api_keys:
+            # Fallback a claves hardcodeadas si no hay secrets configurados
+            st.warning("⚠️ No se encontraron claves API en secrets.toml, usando claves por defecto")
+            return [
+                APIKeyInfo("AIzaSyBVhWdlUeqXlxvf9Nldq-OId9Awoy4n1X4", "mikel_main"),
+                APIKeyInfo("AIzaSyA82YwMMkjSIBnevSXkEvfgPtA9VXcaeE8", "mikel_1"),
+                APIKeyInfo("AIzaSyDMqjrIBrLeTF8I2Rqp2M4aqS46zrCE3sI", "mikel_otra"),
+                APIKeyInfo("AIzaSyBkpLD0fw-zFodOhRGnkF4bzQBYOzFu8d0", "mikel_2"),
+                APIKeyInfo("AIzaSyAj0ppjyHkzmln9GQyPq6vRPGrncD9g3tE", "mikel_3"),
+                APIKeyInfo("AIzaSyCiOU_-G44UGRJp4QP9trrXsWBO0GlTXPQ", "mikel_4"),
+                APIKeyInfo("AIzaSyBT3yn5B42JT28fqKkA-kgDgVOfgJ3IOmM", "frank_1"),
+                APIKeyInfo("AIzaSyBul84D3oblaj09308kOa-Ptb1Rh9XKHJo", "frank_2"),
+                APIKeyInfo("AIzaSyALMtWMcZbBoUOoF3X1JFBN7visJrYH8cg", "frank_3"),
+            ]
+        
+        return api_keys
+        
+    except Exception as e:
+        st.error(f"Error cargando claves API desde secrets: {e}")
+        # Fallback a claves hardcodeadas en caso de error
+        st.warning("Usando claves por defecto como fallback")
+        return [
             APIKeyInfo("AIzaSyBVhWdlUeqXlxvf9Nldq-OId9Awoy4n1X4", "mikel_main"),
             APIKeyInfo("AIzaSyA82YwMMkjSIBnevSXkEvfgPtA9VXcaeE8", "mikel_1"),
             APIKeyInfo("AIzaSyDMqjrIBrLeTF8I2Rqp2M4aqS46zrCE3sI", "mikel_otra"),
@@ -39,6 +66,15 @@ class GeminiAPIRotator:
             APIKeyInfo("AIzaSyBul84D3oblaj09308kOa-Ptb1Rh9XKHJo", "frank_2"),
             APIKeyInfo("AIzaSyALMtWMcZbBoUOoF3X1JFBN7visJrYH8cg", "frank_3"),
         ]
+
+class GeminiAPIRotator:
+    """Gestor de rotación de claves API para Gemini"""
+    
+    def __init__(self):
+        """Inicializa el rotador con las claves disponibles desde secrets.toml"""
+        # Cargar las claves desde secrets.toml
+        self.api_keys = load_api_keys_from_secrets()
+        
         # Empezar con una clave aleatoria para distribuir la carga
         self.current_key_index = random.randint(0, len(self.api_keys) - 1)
         self.logger = logging.getLogger(__name__)
